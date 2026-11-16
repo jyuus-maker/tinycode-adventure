@@ -8,12 +8,14 @@ import { ContentDataSection } from './sections/ContentDataSection';
 import { DistantAndPathSection } from './sections/DistantAndPathSection';
 import { ItemGradesSection } from './sections/ItemGradesSection';
 import { MobsAndItemsSection } from './sections/MobsAndItemsSection';
+import { PaletteSwapSection } from './sections/PaletteSwapSection';
 import { StatRollSection } from './sections/StatRollSection';
 import { TitleBgSection } from './sections/TitleBgSection';
 
 type TabId =
   | 'distant-path'
   | 'mobs-items'
+  | 'palette-swap'
   | 'item-grades'
   | 'title-bg'
   | 'code-render'
@@ -31,6 +33,7 @@ interface TabItem {
 const TABS: readonly TabItem[] = [
   { id: 'distant-path', label: '지역 원경 & 길' },
   { id: 'mobs-items', label: '몹 · 전용템' },
+  { id: 'palette-swap', label: '팔레트 스왑 비교' },
   { id: 'item-grades', label: '아이템 등급' },
   { id: 'title-bg', label: '타이틀 배경' },
   { id: 'code-render', label: '코드 렌더러' },
@@ -41,10 +44,28 @@ const TABS: readonly TabItem[] = [
   { id: 'stat-roll', label: '스탯 굴림' },
 ] as const;
 
+function resolveInitialTab(): TabId {
+  if (typeof window === 'undefined') return 'distant-path';
+  const param = new URLSearchParams(window.location.search).get('tab');
+  if (param && TABS.some((t) => t.id === param)) {
+    return param as TabId;
+  }
+  return 'distant-path';
+}
+
 export function RenderCheck() {
   const [region, setRegion] = useState<Region>('warm');
   const [isNight, setIsNight] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>('distant-path');
+  const [activeTab, setActiveTab] = useState<TabId>(resolveInitialTab);
+
+  const handleSelectTab = (tabId: TabId) => {
+    setActiveTab(tabId);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tabId);
+      window.history.replaceState(null, '', url.toString());
+    }
+  };
 
   return (
     <div style={{ padding: '24px', fontFamily: 'system-ui, sans-serif' }}>
@@ -135,7 +156,7 @@ export function RenderCheck() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleSelectTab(tab.id)}
               style={{
                 padding: '10px 16px',
                 cursor: 'pointer',
@@ -163,6 +184,9 @@ export function RenderCheck() {
         )}
         {activeTab === 'mobs-items' && (
           <MobsAndItemsSection region={region} isNight={isNight} />
+        )}
+        {activeTab === 'palette-swap' && (
+          <PaletteSwapSection isNight={isNight} />
         )}
         {activeTab === 'item-grades' && (
           <ItemGradesSection region={region} isNight={isNight} />
