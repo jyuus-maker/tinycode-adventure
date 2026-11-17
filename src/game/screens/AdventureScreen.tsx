@@ -804,17 +804,16 @@ type RegionFlipPhase = 'idle' | 'to-back' | 'to-front';
 const REGION_FLIP_HALF_MS = 260;
 
 function RoadCard({ card, slot, stage, region, ref }: RoadCardProps) {
-  const isPaletteMob =
-    card.def.kind === 'mob' && isRegionPaletteTarget(card.def.assetId);
+  const isFront = slot === 0;
+  const canFlip =
+    isFront && card.def.kind === 'mob' && isRegionPaletteTarget(card.def.assetId);
   const [displayRegion, setDisplayRegion] = useState<Region>(region);
   const [flipPhase, setFlipPhase] = useState<RegionFlipPhase>('idle');
   const prevRegionRef = useRef<Region>(region);
 
   useEffect(() => {
-    if (!isPaletteMob) {
+    if (!canFlip) {
       prevRegionRef.current = region;
-      setDisplayRegion(region);
-      setFlipPhase('idle');
       return;
     }
     if (prevRegionRef.current === region) {
@@ -835,7 +834,10 @@ function RoadCard({ card, slot, stage, region, ref }: RoadCardProps) {
       window.clearTimeout(swapTimer);
       window.clearTimeout(doneTimer);
     };
-  }, [region, isPaletteMob]);
+  }, [region, canFlip]);
+
+  const effectiveRegion = canFlip ? displayRegion : region;
+  const effectiveFlipPhase = canFlip ? flipPhase : 'idle';
 
   const depth = cardSlotDepth(slot);
   const upright = -G.floorTilt;
@@ -868,22 +870,21 @@ function RoadCard({ card, slot, stage, region, ref }: RoadCardProps) {
   const sprite = (
     <PixelSprite
       id={card.def.assetId}
-      palette={getAssetRegionPalette(card.def.assetId, displayRegion)}
+      palette={getAssetRegionPalette(card.def.assetId, effectiveRegion)}
       scale={G.tileScale}
     />
   );
 
-  const isFront = slot === 0;
   const cardTypeWord = card.def.kind === 'mob' ? 'BATTLE' : 'EVENT';
   const displayName =
     card.def.kind === 'mob'
-      ? getMobDisplayName(card.def.mobId, displayRegion, card.def.name)
+      ? getMobDisplayName(card.def.mobId, effectiveRegion, card.def.name)
       : card.def.name;
 
   const flipClassName =
-    flipPhase === 'to-back'
+    effectiveFlipPhase === 'to-back'
       ? 'road-card-flip road-card-flip-to-back'
-      : flipPhase === 'to-front'
+      : effectiveFlipPhase === 'to-front'
         ? 'road-card-flip road-card-flip-to-front'
         : 'road-card-flip';
 
@@ -894,8 +895,8 @@ function RoadCard({ card, slot, stage, region, ref }: RoadCardProps) {
       data-instance-id={card.instanceId}
       data-base-id={card.def.baseId}
       data-slot={slot}
-      data-display-region={displayRegion}
-      data-flip-phase={flipPhase}
+      data-display-region={effectiveRegion}
+      data-flip-phase={effectiveFlipPhase}
       style={{
         width: G.cardWidth,
         height: G.cardHeight,
