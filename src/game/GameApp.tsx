@@ -3,20 +3,8 @@ import { ADVENTURE_TIME_LIMIT_SEC } from '../config';
 import type { Rng } from '../logic/rng';
 import {
   computeRemainingSeconds,
-  hasValidPlatformSession,
   resolveDisplayedRemainingSeconds,
-  type PlatformTimerSession,
 } from './timer';
-import {
-  computeRunScore,
-  extractSdkErrorMessage,
-  INITIAL_SDK_SESSION_STATE,
-  INITIAL_SDK_SUBMIT_STATE,
-  startTinyArcadeSession,
-  submitTinyArcadeScore,
-  type SdkSessionState,
-  type SdkSubmitState,
-} from './sdk';
 import {
   drawAdventureStart,
   getEnvForParticipation,
@@ -67,49 +55,29 @@ import './game.css';
 export type GameAppProps = {
   /** 난수 공급원. 기본 Math.random. 검증 시 시드 난수를 주입할 수 있다 */
   rng?: Rng;
-  /** 유효한 TinyArcade 플랫폼 세션 정보(존재 시 플랫폼 남은 시간 우선, 자체 카운트다운 미실행) */
-  platformSession?: PlatformTimerSession | null;
 };
 
 /**
  * 판 상태의 단일 소유자. 랜덤 추첨은 이벤트 핸들러에서 한 번만 수행하고,
  * 상태 갱신 함수(apply*)는 순수 함수라 StrictMode의 중복 호출에도 결과가 같다.
  */
-export function GameApp({ rng = Math.random, platformSession = null }: GameAppProps) {
+export function GameApp({ rng = Math.random }: GameAppProps) {
   const [state, setState] = useState<GameState>(createInitialState);
   const [localRemainingSeconds, setLocalRemainingSeconds] = useState<number>(
     ADVENTURE_TIME_LIMIT_SEC,
   );
-  const [sdkSession, setSdkSession] = useState<SdkSessionState>(
-    INITIAL_SDK_SESSION_STATE,
-  );
-  const [sdkSubmit, setSdkSubmit] = useState<SdkSubmitState>(
-    INITIAL_SDK_SUBMIT_STATE,
-  );
   const deadlineMsRef = useRef<number | null>(null);
-  const runSeqRef = useRef(0);
-  const submittedRunSeqRef = useRef<number | null>(null);
   const scale = useFrameScale();
 
-  const hasPlatformSession = hasValidPlatformSession(platformSession);
   const displayedRemainingSeconds = resolveDisplayedRemainingSeconds(
     localRemainingSeconds,
-    platformSession,
   );
 
-  // 모험 타이머: 플랫폼 세션이 있으면 플랫폼 남은 시간만 반영하고, 없으면 실제 시각 기준 600초 카운트다운 실행
+  // 모험 타이머: 실제 시각 기준 600초 카운트다운 실행
   useEffect(() => {
     if (state.phase !== 'adventure') {
       deadlineMsRef.current = null;
       setLocalRemainingSeconds(ADVENTURE_TIME_LIMIT_SEC);
-      return;
-    }
-
-    if (hasPlatformSession) {
-      deadlineMsRef.current = null;
-      if (platformSession && platformSession.remainingSeconds <= 0) {
-        setState((prev) => applyTimeoutEnd(prev));
-      }
       return;
     }
 
@@ -137,70 +105,11 @@ export function GameApp({ rng = Math.random, platformSession = null }: GameAppPr
       window.removeEventListener('focus', syncTimer);
       document.removeEventListener('visibilitychange', syncTimer);
     };
-  }, [state.phase, hasPlatformSession, platformSession?.remainingSeconds]);
-
-  // 한 판 종료(runEnd) 시 SDK 점수 제출 (한 판당 1회만 호출)
-  useEffect(() => {
-    if (state.phase !== 'runEnd') return;
-    const currentRunSeq = runSeqRef.current;
-    if (submittedRunSeqRef.current === currentRunSeq) return;
-    submittedRunSeqRef.current = currentRunSeq;
-
-    const context = state.missionId ? getMissionContext(state.missionId) : null;
-    const { totalScore } = computeRunScore({
-      heroDead: state.heroEffects?.isDead ?? false,
-      totalMobDamage: state.totalMobDamage,
-      scoreItemPoints: state.scoreItemPoints,
-      missionInventory: state.missionInventory,
-      missionTargetCount: context ? context.mission.count : null,
-    });
-
-    setSdkSubmit({
-      status: 'submitting',
-      verifyStatus: null,
-      testMode: sdkSession.testMode,
-      submittedScore: totalScore,
-      errorMessage: null,
-    });
-
-    void submitTinyArcadeScore(totalScore)
-      .then((res) => {
-        if (runSeqRef.current !== currentRunSeq) return;
-        setSdkSubmit({
-          status: 'submitted',
-          verifyStatus: res.verifyStatus,
-          testMode: res.testMode,
-          submittedScore: res.score,
-          errorMessage: null,
-        });
-      })
-      .catch((err) => {
-        if (runSeqRef.current !== currentRunSeq) return;
-        setSdkSubmit({
-          status: 'error',
-          verifyStatus: null,
-          testMode: sdkSession.testMode,
-          submittedScore: totalScore,
-          errorMessage: extractSdkErrorMessage(err),
-        });
-      });
-  }, [
-    state.phase,
-    state.missionId,
-    state.heroEffects?.isDead,
-    state.totalMobDamage,
-    state.scoreItemPoints,
-    state.missionInventory,
-    sdkSession.testMode,
-  ]);
+  }, [state.phase]);
 
   const handleRestart = () => {
-    runSeqRef.current += 1;
-    submittedRunSeqRef.current = null;
     deadlineMsRef.current = null;
     setLocalRemainingSeconds(ADVENTURE_TIME_LIMIT_SEC);
-    setSdkSession(INITIAL_SDK_SESSION_STATE);
-    setSdkSubmit(INITIAL_SDK_SUBMIT_STATE);
     setState(createInitialState());
   };
 
@@ -225,40 +134,6 @@ export function GameApp({ rng = Math.random, platformSession = null }: GameAppPr
     }
     const regionOrder = drawRegionOrder(rng);
     setState((prev) => applyDepart(prev, regionOrder));
-
-    const currentRunSeq = runSeqRef.current + 1;
-    runSeqRef.current = currentRunSeq;
-    submittedRunSeqRef.current = null;
-    setSdkSubmit(INITIAL_SDK_SUBMIT_STATE);
-    setSdkSession({
-      status: 'starting',
-      sessionId: null,
-      testMode: false,
-      loggedIn: false,
-      errorMessage: null,
-    });
-
-    void startTinyArcadeSession()
-      .then((res) => {
-        if (runSeqRef.current !== currentRunSeq) return;
-        setSdkSession({
-          status: 'started',
-          sessionId: res.sessionId,
-          testMode: res.testMode,
-          loggedIn: res.loggedIn,
-          errorMessage: null,
-        });
-      })
-      .catch((err) => {
-        if (runSeqRef.current !== currentRunSeq) return;
-        setSdkSession({
-          status: 'error',
-          sessionId: null,
-          testMode: false,
-          loggedIn: false,
-          errorMessage: extractSdkErrorMessage(err),
-        });
-      });
   };
 
   // ---- 작업 02: 카드 길 ----
@@ -454,7 +329,7 @@ export function GameApp({ rng = Math.random, platformSession = null }: GameAppPr
   return (
     <div className="game-viewport">
       <div className="game-frame" style={{ transform: `scale(${scale})` }}>
-        {renderScreen(state, displayedRemainingSeconds, sdkSession, sdkSubmit, {
+        {renderScreen(state, displayedRemainingSeconds, {
           onStart: handleStart,
           onReroll: handleReroll,
           onConfirmStats: handleConfirmStats,
@@ -504,8 +379,6 @@ type ScreenHandlers = {
 function renderScreen(
   state: GameState,
   remainingSeconds: number,
-  sdkSession: SdkSessionState,
-  sdkSubmit: SdkSubmitState,
   handlers: ScreenHandlers,
 ) {
   switch (state.phase) {
@@ -544,7 +417,6 @@ function renderScreen(
           regionOrder={state.regionOrder}
           participationCount={state.participationCount}
           timeOfDay={state.timeOfDay}
-          sdkSession={sdkSession}
           onEnterAdventure={handlers.onEnterAdventure}
         />
       );
@@ -603,8 +475,6 @@ function renderScreen(
           missionInventory={state.missionInventory}
           heroStats={state.roll?.heroStats ?? null}
           heroEffects={state.heroEffects}
-          sdkSession={sdkSession}
-          sdkSubmit={sdkSubmit}
           onRestart={handlers.onRestart}
         />
       );

@@ -1,15 +1,14 @@
 import type { AdventureState } from '../adventure';
 import { TOTAL_PARTICIPATION_CARDS } from '../adventure';
-import type { HeroMissionInventory, MissionContext } from '../gameState';
+import {
+  computeRunScore,
+  type HeroMissionInventory,
+  type MissionContext,
+} from '../gameState';
 import type { HeroStats } from '../../logic/statRoll';
 import type { HeroEffectState } from '../../logic/effects/types';
 import { PixelSprite } from '../../render/PixelSprite';
 import { GAME_FRAME_HEIGHT, GAME_FRAME_WIDTH } from '../frame';
-import {
-  computeRunScore,
-  type SdkSessionState,
-  type SdkSubmitState,
-} from '../sdk';
 
 const TITLE_BG_ASSET_ID = 'bg-title-adventure-512';
 
@@ -23,8 +22,6 @@ export type RunEndScreenProps = {
   missionInventory?: HeroMissionInventory;
   heroStats?: HeroStats | null;
   heroEffects?: HeroEffectState | null;
-  sdkSession?: SdkSessionState;
-  sdkSubmit?: SdkSubmitState;
   onRestart?: () => void;
 };
 

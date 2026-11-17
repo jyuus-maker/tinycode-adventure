@@ -408,6 +408,40 @@ export function setReturnPromptPending(
   };
 }
 
+/** 0 이상, 소수 둘째 자리까지의 최종 점수를 계산한다 */
+export function computeRunScore(params: {
+  heroDead: boolean;
+  totalMobDamage: number;
+  scoreItemPoints: number;
+  missionInventory: HeroMissionInventory;
+  missionTargetCount: number | null;
+}): {
+  isMissionCompleted: boolean;
+  missionBonus: number;
+  totalScore: number;
+} {
+  const {
+    heroDead,
+    totalMobDamage,
+    scoreItemPoints,
+    missionInventory,
+    missionTargetCount,
+  } = params;
+  const isMissionCompleted =
+    missionTargetCount !== null
+      ? missionInventory.totalCollected >= missionTargetCount
+      : false;
+  const missionBonus =
+    !heroDead && isMissionCompleted
+      ? missionInventory.shining * 300 +
+        missionInventory.normal * 150 +
+        missionInventory.broken * 50
+      : 0;
+  const rawTotal = totalMobDamage + scoreItemPoints + missionBonus;
+  const totalScore = Math.max(0, Math.round(rawTotal * 100) / 100);
+  return { isMissionCompleted, missionBonus, totalScore };
+}
+
 /** 귀가 결정 적용: 귀가 시 runEnd(컴플릿)로 전이, 계속 시 모험 유지 (§4-9) */
 export function applyReturnDecision(
   state: GameState,
