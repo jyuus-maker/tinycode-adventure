@@ -7,7 +7,6 @@ import { PixelSprite } from '../../render/PixelSprite';
 import { GAME_FRAME_HEIGHT, GAME_FRAME_WIDTH } from '../frame';
 import {
   computeRunScore,
-  getSubmitNotice,
   type SdkSessionState,
   type SdkSubmitState,
 } from '../sdk';
@@ -51,8 +50,6 @@ export function RunEndScreen({
   missionInventory = { shining: 0, normal: 0, broken: 0, totalCollected: 0 },
   heroStats = null,
   heroEffects = null,
-  sdkSession,
-  sdkSubmit,
   onRestart,
 }: RunEndScreenProps) {
   const currentHp = heroEffects ? Math.max(0, heroEffects.currentHp) : heroStats ? heroStats.hp : 0;
@@ -63,7 +60,6 @@ export function RunEndScreen({
     missionInventory,
     missionTargetCount: missionContext ? missionContext.mission.count : null,
   });
-  const sdkNotice = sdkSubmit ? getSubmitNotice(sdkSubmit, sdkSession) : null;
 
   const title = heroDead
     ? '용사 쓰러짐'
@@ -118,24 +114,6 @@ export function RunEndScreen({
 
         <div className="end-score-label">TOTAL SCORE</div>
         <div className="end-score">{totalScore.toLocaleString()}</div>
-        {sdkNotice && (
-          <p
-            className="sdk-notice"
-            style={{
-              margin: '4px 0 10px',
-              fontSize: 12,
-              textAlign: 'center',
-              color:
-                sdkNotice.tone === 'warn'
-                  ? '#fca5a5'
-                  : sdkNotice.tone === 'ok'
-                    ? '#86efac'
-                    : '#fde68a',
-            }}
-          >
-            {sdkNotice.text}
-          </p>
-        )}
 
         <div className="end-stats">
           <div>
