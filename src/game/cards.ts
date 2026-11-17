@@ -37,6 +37,7 @@ export type CardDef = MobCardDef | EventCardDef;
 
 export const SLEEPING_MOB_BASE_ID = 'sleeping-mob';
 export const MIMIC_MOB_ID = 'mimic';
+export const MAX_CONSECUTIVE_EVENTS = 2;
 
 /** 잠든 몹 카드 (정체 비공개). 그림은 공용 그림자 에셋 */
 export const SLEEPING_MOB_CARD: MobCardDef = {
@@ -57,6 +58,12 @@ export const EVENT_CARDS: readonly EventCardDef[] = EVENTS.map((ev) => ({
   passable: ev.passable,
   branch: ev.branch,
 }));
+
+const EVENT_BASE_IDS = new Set(EVENT_CARDS.map((ev) => ev.baseId));
+
+export function isEventBaseId(baseId: string | null | undefined): boolean {
+  return !!baseId && EVENT_BASE_IDS.has(baseId);
+}
 
 /** 지역별 변형 이름 조회 (길 위 카드·전투·전투 후 퇴장 표시명 통일) */
 export function getMobDisplayName(
@@ -148,9 +155,12 @@ export function drawCardDef(
   rng: Rng,
   excludeBaseIds: readonly (string | null | undefined)[] = [],
   weights: CardWeights = DEFAULT_CARD_WEIGHTS,
+  excludeEvents: boolean = false,
 ): CardDef {
   const excluded = excludeBaseIds.filter((id): id is string => !!id);
-  const candidates = pool.filter((c) => !excluded.includes(c.baseId));
+  const candidates = pool.filter(
+    (c) => !excluded.includes(c.baseId) && (!excludeEvents || c.kind !== 'event'),
+  );
   if (candidates.length === 0) {
     throw new CardPoolExhaustedError(excluded);
   }
@@ -175,7 +185,7 @@ export function drawCardDef(
 
 /**
  * 연속 금지를 지키며 n장을 이어서 추첨 (출발 시 초기 대열용).
- * 각 장은 바로 앞 장과 baseId가 다르다.
+ * 각 장은 바로 앞 장과 baseId가 다르며, 이벤트 카드는 최대 MAX_CONSECUTIVE_EVENTS장까지만 연속 출현한다.
  */
 export function drawCardChain(
   pool: readonly CardDef[],
@@ -186,10 +196,13 @@ export function drawCardChain(
 ): CardDef[] {
   const chain: CardDef[] = [];
   let last = previousBaseId;
+  let consecutiveEvents = isEventBaseId(previousBaseId) ? 1 : 0;
   for (let i = 0; i < count; i++) {
-    const def = drawCardDef(pool, rng, [last], weights);
+    const excludeEvents = consecutiveEvents >= MAX_CONSECUTIVE_EVENTS;
+    const def = drawCardDef(pool, rng, [last], weights, excludeEvents);
     chain.push(def);
     last = def.baseId;
+    consecutiveEvents = def.kind === 'event' ? consecutiveEvents + 1 : 0;
   }
   return chain;
 }

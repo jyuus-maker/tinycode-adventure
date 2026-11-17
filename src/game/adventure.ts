@@ -6,6 +6,8 @@ import {
   drawCardChain,
   drawCardDef,
   isCardSuitable,
+  isEventBaseId,
+  MAX_CONSECUTIVE_EVENTS,
   type CardDef,
   type CardWeights,
   DEFAULT_CARD_WEIGHTS,
@@ -147,6 +149,26 @@ export type AdvancePlan =
       refill: CardDef;
     };
 
+function getRecentBaseIds(adventure: AdventureState): string[] {
+  const logIds = adventure.log.map((e) => e.baseId);
+  const active = adventure.active;
+  if (!active) return logIds;
+  const lastLog = adventure.log[adventure.log.length - 1];
+  if (lastLog && lastLog.instanceId === active.instanceId) {
+    return logIds;
+  }
+  return [...logIds, active.def.baseId];
+}
+
+function countTrailingEvents(baseIds: readonly (string | null | undefined)[]): number {
+  let count = 0;
+  for (let i = baseIds.length - 1; i >= 0; i--) {
+    if (!isEventBaseId(baseIds[i])) break;
+    count++;
+  }
+  return count;
+}
+
 /**
  * 활성 카드 종료 후 다음 카드 계획. 추첨이 필요하므로 핸들러에서 호출하고
  * 결과를 applyCardExited에 넘긴다(상태 갱신 함수 안에서 난수 금지).
@@ -163,20 +185,32 @@ export function planAdvance(
 
   const pool = buildCardPool(env.timeOfDay);
   const lastBaseId = adventure.active?.def.baseId ?? adventure.lastBaseId;
+  const recentBaseIds = getRecentBaseIds(adventure);
+  const trailingBeforeNext = countTrailingEvents(recentBaseIds);
   const next = adventure.preview[0];
   const after = adventure.preview[1];
+
+  const nextViolatesEventCap =
+    !!next &&
+    next.def.kind === 'event' &&
+    trailingBeforeNext >= MAX_CONSECUTIVE_EVENTS;
 
   let replacement: CardDef | null = null;
   if (
     !next ||
     !isCardSuitable(next.def, env.timeOfDay) ||
-    next.def.baseId === lastBaseId
+    next.def.baseId === lastBaseId ||
+    nextViolatesEventCap
   ) {
+    const excludeEventsForNext =
+      trailingBeforeNext >= MAX_CONSECUTIVE_EVENTS ||
+      (isEventBaseId(lastBaseId) && after?.def.kind === 'event');
     replacement = drawCardDef(
       pool,
       rng,
       [lastBaseId, after?.def.baseId],
       weights,
+      excludeEventsForNext,
     );
   }
 
@@ -186,11 +220,21 @@ export function planAdvance(
       regionOrder,
     ) ?? env;
   const refillPool = buildCardPool(refillEnv.timeOfDay);
+  const effectivePreviewBaseIds = adventure.preview.map((p, idx) =>
+    idx === 0 && replacement ? replacement.baseId : p.def.baseId,
+  );
+  const queueBeforeRefill = [...recentBaseIds, ...effectivePreviewBaseIds];
   const tailBaseId =
-    adventure.preview[adventure.preview.length - 1]?.def.baseId ??
-    replacement?.baseId ??
-    lastBaseId;
-  const refill = drawCardDef(refillPool, rng, [tailBaseId], weights);
+    queueBeforeRefill[queueBeforeRefill.length - 1] ?? lastBaseId;
+  const excludeEventsForRefill =
+    countTrailingEvents(queueBeforeRefill) >= MAX_CONSECUTIVE_EVENTS;
+  const refill = drawCardDef(
+    refillPool,
+    rng,
+    [tailBaseId],
+    weights,
+    excludeEventsForRefill,
+  );
 
   return { kind: 'next-card', env, replacement, refill };
 }
@@ -209,12 +253,24 @@ export function planPreviewSuitability(
   const next = adventure.preview[0];
   if (!next) return null;
   const lastBaseId = adventure.active?.def.baseId ?? adventure.lastBaseId;
-  if (isCardSuitable(next.def, nextEnv.timeOfDay) && next.def.baseId !== lastBaseId) {
+  const recentBaseIds = getRecentBaseIds(adventure);
+  const trailingBeforeNext = countTrailingEvents(recentBaseIds);
+  const violatesEventCap =
+    next.def.kind === 'event' && trailingBeforeNext >= MAX_CONSECUTIVE_EVENTS;
+
+  if (
+    isCardSuitable(next.def, nextEnv.timeOfDay) &&
+    next.def.baseId !== lastBaseId &&
+    !violatesEventCap
+  ) {
     return null;
   }
   const pool = buildCardPool(nextEnv.timeOfDay);
   const after = adventure.preview[1];
-  return drawCardDef(pool, rng, [lastBaseId, after?.def.baseId], weights);
+  const excludeEvents =
+    trailingBeforeNext >= MAX_CONSECUTIVE_EVENTS ||
+    (isEventBaseId(lastBaseId) && after?.def.kind === 'event');
+  return drawCardDef(pool, rng, [lastBaseId, after?.def.baseId], weights, excludeEvents);
 }
 
 /**
