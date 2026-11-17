@@ -16,18 +16,25 @@ export function rollEncounterStyle(
 }
 
 /**
- * 도망 성공 여부 판정 (§4-3: 유저 도망 성공률 = 유저 명중률).
- * 유저 명중률 원식: heroHp / (heroHp + mobHp)
+ * 도망 성공률 계산 (§4-3: 유저 도망 성공률 = 유저 명중률 원식).
+ * heroHp / (heroHp + mobHp)
+ */
+export function computeFleeRate(heroHp: number, mobHp: number): number {
+  if (heroHp <= 0) return 0;
+  if (mobHp <= 0) return 1;
+  return heroHp / (heroHp + mobHp);
+}
+
+/**
+ * 도망 성공 여부 판정.
  */
 export function rollFlee(
   heroHp: number,
   mobHp: number,
   rng: Rng = Math.random,
 ): boolean {
-  if (heroHp <= 0) return false;
-  if (mobHp <= 0) return true;
-  const hitRate = heroHp / (heroHp + mobHp);
-  return rng() < hitRate;
+  const fleeRate = computeFleeRate(heroHp, mobHp);
+  return rng() < fleeRate;
 }
 
 export type SleepingMobResolution = {

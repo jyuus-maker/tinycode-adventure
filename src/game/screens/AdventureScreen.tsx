@@ -9,7 +9,11 @@ import {
 import { ADVENTURE_TIME_LIMIT_SEC, NIGHT_CSS_FILTER, type Region } from '../../config';
 import { formatRemainingTime } from '../timer';
 import { PixelSprite } from '../../render/PixelSprite';
-import { getAssetRegionPalette, getDistantBgId } from '../../render/region';
+import {
+  getAssetRegionPalette,
+  getDistantBgId,
+  isRegionPaletteTarget,
+} from '../../render/region';
 import {
   TOTAL_PARTICIPATION_CARDS,
   type AdventureState,
@@ -795,7 +799,44 @@ type RoadCardProps = {
   ref?: Ref<HTMLDivElement>;
 };
 
+type RegionFlipPhase = 'idle' | 'to-back' | 'to-front';
+
+const REGION_FLIP_HALF_MS = 260;
+
 function RoadCard({ card, slot, stage, region, ref }: RoadCardProps) {
+  const isPaletteMob =
+    card.def.kind === 'mob' && isRegionPaletteTarget(card.def.assetId);
+  const [displayRegion, setDisplayRegion] = useState<Region>(region);
+  const [flipPhase, setFlipPhase] = useState<RegionFlipPhase>('idle');
+  const prevRegionRef = useRef<Region>(region);
+
+  useEffect(() => {
+    if (!isPaletteMob) {
+      prevRegionRef.current = region;
+      setDisplayRegion(region);
+      setFlipPhase('idle');
+      return;
+    }
+    if (prevRegionRef.current === region) {
+      return;
+    }
+    prevRegionRef.current = region;
+
+    setFlipPhase('to-back');
+    const swapTimer = window.setTimeout(() => {
+      setDisplayRegion(region);
+      setFlipPhase('to-front');
+    }, REGION_FLIP_HALF_MS);
+    const doneTimer = window.setTimeout(() => {
+      setFlipPhase('idle');
+    }, REGION_FLIP_HALF_MS * 2);
+
+    return () => {
+      window.clearTimeout(swapTimer);
+      window.clearTimeout(doneTimer);
+    };
+  }, [region, isPaletteMob]);
+
   const depth = cardSlotDepth(slot);
   const upright = -G.floorTilt;
   const leaning = -(G.floorTilt - G.cardLean);
@@ -827,7 +868,7 @@ function RoadCard({ card, slot, stage, region, ref }: RoadCardProps) {
   const sprite = (
     <PixelSprite
       id={card.def.assetId}
-      palette={getAssetRegionPalette(card.def.assetId, region)}
+      palette={getAssetRegionPalette(card.def.assetId, displayRegion)}
       scale={G.tileScale}
     />
   );
@@ -836,8 +877,15 @@ function RoadCard({ card, slot, stage, region, ref }: RoadCardProps) {
   const cardTypeWord = card.def.kind === 'mob' ? 'BATTLE' : 'EVENT';
   const displayName =
     card.def.kind === 'mob'
-      ? getMobDisplayName(card.def.mobId, region, card.def.name)
+      ? getMobDisplayName(card.def.mobId, displayRegion, card.def.name)
       : card.def.name;
+
+  const flipClassName =
+    flipPhase === 'to-back'
+      ? 'road-card-flip road-card-flip-to-back'
+      : flipPhase === 'to-front'
+        ? 'road-card-flip road-card-flip-to-front'
+        : 'road-card-flip';
 
   return (
     <div
@@ -846,6 +894,8 @@ function RoadCard({ card, slot, stage, region, ref }: RoadCardProps) {
       data-instance-id={card.instanceId}
       data-base-id={card.def.baseId}
       data-slot={slot}
+      data-display-region={displayRegion}
+      data-flip-phase={flipPhase}
       style={{
         width: G.cardWidth,
         height: G.cardHeight,
@@ -854,12 +904,20 @@ function RoadCard({ card, slot, stage, region, ref }: RoadCardProps) {
         transitionDuration: duration,
       }}
     >
-      <small className="road-card-top">
-        {isFront ? '◆　A D V E N T U R E　◆' : '◆'}
-      </small>
-      <div className="road-card-art">{sprite}</div>
-      <span className="road-card-name">{displayName}</span>
-      <span className="road-card-bottom">{cardTypeWord}</span>
+      <div className={flipClassName}>
+        <div className="road-card-front">
+          <small className="road-card-top">
+            {isFront ? '◆　A D V E N T U R E　◆' : '◆'}
+          </small>
+          <div className="road-card-art">{sprite}</div>
+          <span className="road-card-name">{displayName}</span>
+          <span className="road-card-bottom">{cardTypeWord}</span>
+        </div>
+        <div className="road-card-back" aria-hidden="true">
+          <div className="road-card-back-crest">〈/〉</div>
+          <div className="road-card-back-label">TINY ARCADE</div>
+        </div>
+      </div>
     </div>
   );
 }

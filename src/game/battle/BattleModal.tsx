@@ -7,6 +7,7 @@ import { analyticsCollector } from '../../logic/balance/collector';
 import type { BattleRecord } from '../../logic/balance/types';
 import {
   chooseMobAction,
+  computeFleeRate,
   computeHitRate,
   createBattleState,
   createMobParticipant,
@@ -442,6 +443,7 @@ export function BattleModal({
   const mobHitPct = Math.round(
     computeHitRate('mob', mobHp, mobMaxHp, config, battleState.mob.accuracy) * 100,
   );
+  const fleePct = Math.round(computeFleeRate(heroHp, mobHp) * 100);
 
   const codeDisplay = `let heroHp = ${heroHp};
 let monsterHp = ${mobHp};
@@ -667,7 +669,7 @@ let monsterHit = 0.75 - ((mMaxHp - monsterHp) / mMaxHp) * 0.2; // monster hit: $
                     싸운다
                   </button>
                   <button type="button" className="light-btn" onClick={handleFlee}>
-                    도망간다 ({heroHitPct}%)
+                    도망간다 ({fleePct}%)
                   </button>
                 </>
               )
